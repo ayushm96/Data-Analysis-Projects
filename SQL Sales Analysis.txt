@@ -1,7 +1,8 @@
 In this project, we will analyze sales data using SQL to address specific questions related to the sales data. This analysis involves extracting insights by 
 querying and manipulating data stored in a database using SQL. This powerful framework allows us to aggregate sales figures, calculate metrics, and identify
-trends in the sales data. The dataset covers sales from January 2023 to November 2023. We will focus on the sales table, which includes information such as
-order ID, date, quantity, product ID, product category, location (state and city), invoice amount, and payment method. 
+trends in the sales data. The dataset covers sales from January 2023 to November 2023. The analysis will be based on data in two tables: Sales and product. 
+The sales table contains information regarding order ID, date, quantity, product ID, product, category, location (state and city), invoice amount, and payment
+method. The product table contains information about product ID, item, price, manufacturing_cost, selling_cost, total_inventory, and aged_90_days_inventory. 
 
 mysql> -- Taking a look at the data in the sales tables after importing it.
 mysql> SELECT * FROM sales
@@ -17,6 +18,20 @@ mysql> SELECT * FROM sales
 +----------+---------------------+----------+------------+---------+------------+--------------+---------------+----------------+---------------------+
 5 rows in set (0.09 sec)
 
+mysql> -- Taking a look at the data in the product table after importing it
+mysql> SELECT * FROM product
+    -> LIMIT 5;
++------------+--------+-------+--------------------+--------------+-----------------+------------------------+
+| product_id | item   | price | manufacturing_cost | selling_cost | total_inventory | aged_90_days_inventory |
++------------+--------+-------+--------------------+--------------+-----------------+------------------------+
+| 25         | Item 1 |   799 |                550 |          140 |              50 |                      8 |
+| 26         | Item 2 |   999 |                688 |          175 |             200 |                     30 |
+| 27         | Item 3 |  1249 |                860 |          219 |             150 |                     23 |
+| 28         | Item 4 |  1499 |               1032 |          263 |             150 |                     23 |
+| 29         | Item 5 |   599 |                412 |          105 |              50 |                      8 |
++------------+--------+-------+--------------------+--------------+-----------------+------------------------+
+5 rows in set (0.00 sec)
+
 mysql> -- Finding null values in the sales table
 mysql> SELECT * FROM sales
     -> WHERE order_id IS NULL OR
@@ -31,12 +46,30 @@ mysql> SELECT * FROM sales
     -> payment_method_code IS NULL;
 Empty set (0.10 sec)
 
-mysql> -- Checking for duplicate values in the sales tables
+mysql> -- Finding null values in the product table
+mysql> SELECT * FROM product
+    -> WHERE product_id IS NULL OR
+    -> item IS NULL OR
+    -> price IS NULL OR
+    -> manufacturing_cost IS NULL OR
+    -> selling_cost IS NULL OR
+    -> total_inventory IS NULL OR
+    -> aged_90_days_inventory IS NULL;
+Empty set (0.01 sec)
+
+mysql> -- Checking for duplicate values in the sales table
 mysql> SELECT order_id, order_date, product_id, product, category, count(*)
     -> FROM sales
     -> GROUP BY order_id, order_date, product_id, product, category
     -> HAVING count(*)>1;
 Empty set (0.66 sec)
+
+mysql> -- Checking for duplicate values in the product table
+mysql> SELECT product_id, item, price, count(*)
+    -> FROM product
+    -> GROUP BY product_id, item, price
+    -> HAVING count(*)>1;
+Empty set (0.01 sec)
 
 mysql> -- Top items by revenue
 mysql> SELECT product, sum(invoice_amount) AS item_sales, count(invoice_amount) AS total_orders
@@ -82,81 +115,58 @@ mysql> SELECT ship_to_state AS state, ship_to_city AS city, sum(invoice_amount) 
 +---------------+-----------+---------+--------+
 10 rows in set (0.14 sec)
 
-mysql> -- Top states by revenue
-mysql> SELECT ship_to_state AS state, sum(invoice_amount) AS revenue, count(invoice_amount) AS orders
+mysql> -- Calculating total profits per item
+mysql> SELECT it.category, it.product, it.total_orders, it.revenue,
+    -> (it.revenue - (p.selling_cost + p.manufacturing_cost)*it.total_orders) AS total_profit
+    -> FROM product p
+    -> INNER JOIN (SELECT category, product_id, product, sum(quantity) AS total_orders,
+    -> sum(invoice_amount) AS revenue
     -> FROM sales
-    -> GROUP BY ship_to_state
-    -> ORDER BY revenue DESC
-    -> LIMIT 10;
-+---------------+----------+--------+
-| state         | revenue  | orders |
-+---------------+----------+--------+
-| Maharashtra   | 11328254 |  10258 |
-| Karnataka     | 10993021 |   9911 |
-| Uttar Pradesh |  6597170 |   6201 |
-| Delhi         |  5954514 |   5352 |
-| Tamil Nadu    |  5695087 |   5576 |
-| Telangana     |  5378758 |   5041 |
-| Haryana       |  4277138 |   3872 |
-| West Bengal   |  3245833 |   3081 |
-| Gujarat       |  2453529 |   2278 |
-| Punjab        |  2079883 |   1918 |
-+---------------+----------+--------+
-10 rows in set (0.07 sec)
-
-mysql> -- Ranking revenue for top items in top cities (more than 25 Lakhs total revenue for items and cities)
-mysql> WITH item_city AS (SELECT ship_to_city, product, sum(invoice_amount) AS revenue,
-    -> RANK() OVER(PARTITION BY product ORDER BY sum(invoice_amount) DESC) AS sales_rank_by_city
-    -> FROM sales
-    -> GROUP BY ship_to_city, product)
-    -> SELECT product, ship_to_city, revenue, sales_rank_by_city
-    -> FROM item_city
-    -> WHERE sales_rank_by_city < 5
-    -> AND ship_to_city IN (SELECT ship_to_city FROM sales
-    -> GROUP BY ship_to_city
-    -> HAVING sum(invoice_amount) > 2500000)
-    -> AND product IN (SELECT product
-    -> FROM sales
-    -> GROUP BY product
-    -> HAVING sum(invoice_amount) > 2500000)
-    -> ORDER BY product;
-+---------+--------------+---------+--------------------+
-| product | ship_to_city | revenue | sales_rank_by_city |
-+---------+--------------+---------+--------------------+
-| Item 14 | Bengaluru    | 2725471 |                  1 |
-| Item 14 | Mumbai       | 1443608 |                  2 |
-| Item 14 | New Delhi    | 1418485 |                  3 |
-| Item 14 | Hyderabad    | 1330223 |                  4 |
-| Item 15 | Bengaluru    | 1923357 |                  1 |
-| Item 15 | Hyderabad    | 1100036 |                  2 |
-| Item 15 | New Delhi    | 1092091 |                  3 |
-| Item 15 | Chennai      |  735439 |                  4 |
-| Item 18 | Bengaluru    |  326928 |                  1 |
-| Item 18 | Hyderabad    |  262071 |                  2 |
-| Item 18 | New Delhi    |  172417 |                  3 |
-| Item 18 | Chennai      |  170702 |                  4 |
-| Item 25 | Bengaluru    |  345770 |                  1 |
-| Item 25 | New Delhi    |  199324 |                  2 |
-| Item 25 | Hyderabad    |  142890 |                  3 |
-| Item 25 | Mumbai       |  125788 |                  4 |
-| Item 26 | Bengaluru    |  616812 |                  1 |
-| Item 26 | New Delhi    |  452205 |                  2 |
-| Item 26 | Hyderabad    |  258207 |                  3 |
-| Item 26 | Mumbai       |  217862 |                  4 |
-| Item 28 | Bengaluru    |  433792 |                  1 |
-| Item 28 | New Delhi    |  243313 |                  2 |
-| Item 28 | Mumbai       |  211704 |                  3 |
-| Item 28 | Hyderabad    |  174700 |                  4 |
-| Item 3  | Bengaluru    |  331640 |                  1 |
-| Item 3  | New Delhi    |  274867 |                  2 |
-| Item 3  | Mumbai       |  216719 |                  3 |
-| Item 3  | Hyderabad    |  157350 |                  4 |
-| Item 4  | New Delhi    |  332926 |                  1 |
-| Item 4  | Bengaluru    |  286543 |                  2 |
-| Item 4  | Mumbai       |  197078 |                  3 |
-| Item 4  | Hyderabad    |  154694 |                  4 |
-+---------+--------------+---------+--------------------+
-32 rows in set (0.43 sec)
+    -> GROUP BY category, product_id, product) AS it
+    -> ON it.product_id=p.product_id
+    -> ORDER BY total_profit DESC;
++-------------+---------+--------------+----------+--------------+
+| category    | product | total_orders | revenue  | total_profit |
++-------------+---------+--------------+----------+--------------+
+| Category 6  | Item 15 |        13397 | 14746704 |      1456880 |
+| Category 9  | Item 28 |         5032 |  3328319 |       294023 |
+| Category 8  | Item 22 |         1683 |  1850210 |       234530 |
+| Category 10 | Item 30 |         2006 |  1226258 |       189156 |
+| Category 4  | Item 9  |         2461 |  2154434 |       158563 |
+| Category 2  | Item 6  |         1300 |   774717 |       102617 |
+| Category 7  | Item 19 |         1180 |   758231 |        90351 |
+| Category 2  | Item 5  |          767 |   463839 |        67300 |
+| Category 7  | Item 21 |          742 |   498184 |        55952 |
+| Category 11 | Item 37 |          444 |   410913 |        50829 |
+| Category 8  | Item 23 |         1769 |  2055851 |        39191 |
+| Category 11 | Item 36 |          310 |   249846 |        35946 |
+| Category 4  | Item 11 |          568 |   354158 |        35510 |
+| Category 10 | Item 29 |          598 |   369824 |        34346 |
+| Category 1  | Item 1  |          319 |   251966 |        31856 |
+| Category 11 | Item 34 |          278 |   223472 |        31652 |
+| Category 7  | Item 20 |          220 |   210675 |        30495 |
+| Category 3  | Item 8  |          321 |   581167 |        27121 |
+| Category 8  | Item 24 |          520 |   605620 |        22180 |
+| Category 4  | Item 10 |          523 |   244529 |        19639 |
+| Category 10 | Item 32 |          224 |   140956 |        19324 |
+| Category 3  | Item 7  |          211 |   378957 |        14771 |
+| Category 4  | Item 12 |          226 |   114181 |        12707 |
+| Category 4  | Item 13 |          756 |   369384 |        11040 |
+| Category 10 | Item 31 |          278 |   176294 |         8660 |
+| Category 11 | Item 33 |           84 |    69038 |         7466 |
+| Category 11 | Item 38 |           56 |    44780 |         6140 |
+| Category 8  | Item 27 |           21 |    27279 |         3717 |
+| Category 11 | Item 35 |           27 |    22119 |         2328 |
+| Category 6  | Item 16 |           64 |    93218 |         2018 |
+| Category 8  | Item 25 |         2560 |  2669584 |       -92656 |
+| Category 1  | Item 4  |         3248 |  4026977 |      -179183 |
+| Category 1  | Item 3  |         3056 |  3085919 |      -211505 |
+| Category 1  | Item 2  |         3038 |  2273263 |      -348531 |
+| Category 8  | Item 26 |         5689 |  5725937 |      -560408 |
+| Category 7  | Item 18 |         4609 |  2951041 |      -630152 |
+| Category 5  | Item 14 |         9857 | 18704558 |     -9801886 |
++-------------+---------+--------------+----------+--------------+
+37 rows in set (0.11 sec)
 
 mysql> -- Analyzing inventory status using orders, recommending inventory for December month of 2023 (data is till November 2023 only)
 mysql> WITH item_sales AS (SELECT product_id, product, sum(quantity) AS total_orders
